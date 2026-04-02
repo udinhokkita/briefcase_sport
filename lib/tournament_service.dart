@@ -22,6 +22,11 @@ class TournamentService {
         .where((e) => e.isNotEmpty)
         .toList();
 
+    // 🔥 FIX: minimum player
+    if (players.length < 2) {
+      players.add("BYE");
+    }
+
     // ADD BYE
     while (!_isPowerOfTwo(players.length)) {
       players.add("BYE");
@@ -35,7 +40,6 @@ class TournamentService {
     if (bracketType == "single") {
       matches = _generateSingle(players);
     } else {
-      // double + mpl
       matches = _generateDouble(players);
     }
 
@@ -155,8 +159,8 @@ class TournamentService {
       round++;
     }
 
-    // ===== LOWER =====
-    int lowerMatches = players.length ~/ 2;
+    // ===== LOWER (FIX STABLE) =====
+    int lowerMatches = max(1, players.length ~/ 2);
 
     for (int i = 0; i < lowerMatches; i++) {
       matches.add({
@@ -175,6 +179,7 @@ class TournamentService {
 
   // ================= HELPER =================
   bool _isPowerOfTwo(int n) {
+    if (n <= 0) return false; // 🔥 FIX penting
     return (n & (n - 1)) == 0;
   }
 }
