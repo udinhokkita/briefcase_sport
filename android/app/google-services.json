@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "1055927179578",
+    "project_id": "briefcase-546db",
+    "storage_bucket": "briefcase-546db.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1055927179578:android:88c7598bbe1e101d60d803",
+        "android_client_info": {
+          "package_name": "com.example.briefcase_sport"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "1055927179578-0e5ccp1ctrr44js427tjfhg8pdi8brmk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.briefcase_sport",
+            "certificate_hash": "d3dd82bfbc22c030350084fdcc770acbc2994b69"
+          }
+        },
+        {
+          "client_id": "1055927179578-l5thmuv93mm8oe5juju8ilqn4grjshpr.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC6-ZITdpu_FjAiABu688Mf8GurQ4CdVxE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "1055927179578-l5thmuv93mm8oe5juju8ilqn4grjshpr.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "1055927179578-8viunnqro6f19tj48oec57juq5gsv42r.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.briefcaseSport"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
