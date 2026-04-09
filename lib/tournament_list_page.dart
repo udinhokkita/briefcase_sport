@@ -4,14 +4,28 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import 'create_tournament_page.dart';
 import 'single_elimination_page.dart';
-import 'double_elimination_page.dart'; // pastikan ada
-import 'mpl_bracket_page.dart'; // 🔥 tambah ini
+import 'double_elimination_page.dart';
+import 'mpl_bracket_page.dart';
 import 'apply_admin_page.dart';
 
-class TournamentListPage extends StatelessWidget {
+import 'profile_page.dart';
+import 'notification_page.dart';
+import 'search_user_page.dart'; // 🔥 TAMBAH
+
+class TournamentListPage extends StatefulWidget {
   final bool isAdmin;
 
   const TournamentListPage({super.key, required this.isAdmin});
+
+  @override
+  State<TournamentListPage> createState() =>
+      _TournamentListPageState();
+}
+
+class _TournamentListPageState
+    extends State<TournamentListPage> {
+
+  String selectedTab = "ongoing";
 
   Future<void> handleCreate(BuildContext context, String uid) async {
     final userDoc = await FirebaseFirestore.instance
@@ -21,7 +35,6 @@ class TournamentListPage extends StatelessWidget {
 
     final role = userDoc.data()?['role'] ?? 'user';
 
-    // ❌ NOT ADMIN → POPUP
     if (role != 'admin') {
       showDialog(
         context: context,
@@ -54,7 +67,8 @@ class TournamentListPage extends StatelessWidget {
                   children: [
                     Expanded(
                       child: TextButton(
-                        onPressed: () => Navigator.pop(context),
+                        onPressed: () =>
+                            Navigator.pop(context),
                         child: const Text("Cancel"),
                       ),
                     ),
@@ -62,11 +76,11 @@ class TournamentListPage extends StatelessWidget {
                       child: ElevatedButton(
                         onPressed: () {
                           Navigator.pop(context);
-
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder: (_) => const ApplyAdminPage(),
+                              builder: (_) =>
+                              const ApplyAdminPage(),
                             ),
                           );
                         },
@@ -75,7 +89,8 @@ class TournamentListPage extends StatelessWidget {
                         ),
                         child: const Text(
                           "Jadi Admin 🔥",
-                          style: TextStyle(color: Colors.black),
+                          style: TextStyle(
+                              color: Colors.black),
                         ),
                       ),
                     ),
@@ -89,129 +104,243 @@ class TournamentListPage extends StatelessWidget {
       return;
     }
 
-    // ✅ ADMIN → CREATE PAGE
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (_) => const CreateTournamentPage(),
+        builder: (_) =>
+        const CreateTournamentPage(),
+      ),
+    );
+  }
+
+  Widget buildTab(String title, String value) {
+    final isSelected = selectedTab == value;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          selectedTab = value;
+        });
+      },
+      child: Column(
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color:
+              isSelected ? Colors.cyan : Colors.black54,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Container(
+            height: 3,
+            width: 60,
+            color: isSelected
+                ? Colors.cyan
+                : Colors.transparent,
+          )
+        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser!.uid;
+
+    final uid =
+        FirebaseAuth.instance.currentUser!.uid;
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: Colors.white,
       body: SafeArea(
-        child: StreamBuilder<QuerySnapshot>(
-          stream: FirebaseFirestore.instance
-              .collection('tournaments')
-              .where('uid', isEqualTo: uid)
-              .orderBy('createdAt', descending: true)
-              .snapshots(),
-          builder: (context, snapshot) {
+        child: Column(
+          children: [
 
-            // ================= LOADING =================
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
+            // 🔥 HEADER (SEARCH ADDED)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment:
+                MainAxisAlignment.spaceBetween,
+                children: [
 
-            final hasData =
-                snapshot.hasData && snapshot.data!.docs.isNotEmpty;
-
-            // ================= EMPTY UI =================
-            if (!hasData) {
-              return Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      "BRACKETS",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 26,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 40),
-                    const Text(
-                      "No tournaments",
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    const Text(
-                      "Let's create the first tournament",
-                      style: TextStyle(color: Colors.white54),
-                    ),
-                    const SizedBox(height: 30),
-
-                    // 🔥 BUTTON CENTER
-                    SizedBox(
-                      width: 220,
-                      height: 55,
-                      child: ElevatedButton(
-                        onPressed: () => handleCreate(context, uid),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.red,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                        ),
-                        child: const Text(
-                          "CREATE NEW",
-                          style: TextStyle(fontSize: 16),
+                  Row(
+                    children: const [
+                      Icon(Icons.work_outline,
+                          color: Colors.black),
+                      SizedBox(width: 10),
+                      Text(
+                        "Briefcase",
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight:
+                          FontWeight.bold,
+                          color: Colors.black,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              );
-            }
+                    ],
+                  ),
 
-            // ================= ADA DATA =================
-            final docs = snapshot.data!.docs;
+                  Row(
+                    children: [
 
-            return Column(
+                      // 🔍 SEARCH
+                      IconButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                              const SearchUserPage(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.search),
+                      ),
+
+                      // 🔔 NOTIFICATION
+                      IconButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                              const NotificationPage(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(
+                            Icons.notifications_none),
+                      ),
+
+                      // 👤 PROFILE
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) =>
+                                  ProfilePage(
+                                    userId: uid,
+                                    currentUserId: uid,
+                                  ),
+                            ),
+                          );
+                        },
+                        child: const CircleAvatar(
+                          radius: 15,
+                          backgroundColor:
+                          Colors.purpleAccent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            // TABS
+            Row(
+              mainAxisAlignment:
+              MainAxisAlignment.spaceEvenly,
               children: [
-                // 🔥 BUTTON ATAS
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: () => handleCreate(context, uid),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.green,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                      ),
-                      child: const Text("Create Tournament 🏆"),
+                buildTab("Ongoing", "ongoing"),
+                buildTab("Upcoming", "upcoming"),
+                buildTab("Complete", "completed"),
+              ],
+            ),
+
+            const SizedBox(height: 10),
+
+            // CREATE BUTTON
+            Padding(
+              padding:
+              const EdgeInsets.symmetric(horizontal: 16),
+              child: SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: () =>
+                      handleCreate(context, uid),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green,
+                    shape:
+                    RoundedRectangleBorder(
+                      borderRadius:
+                      BorderRadius.circular(15),
                     ),
                   ),
+                  child: const Text(
+                      "Create Tournament 🏆"),
                 ),
+              ),
+            ),
 
-                // 🔥 LIST
-                Expanded(
-                  child: ListView.builder(
+            const SizedBox(height: 10),
+
+            // LIST
+            Expanded(
+              child: StreamBuilder<QuerySnapshot>(
+                stream: FirebaseFirestore.instance
+                    .collection('tournaments')
+                    .where('uid', isEqualTo: uid)
+                    .orderBy('createdAt',
+                    descending: true)
+                    .snapshots(),
+                builder: (context, snapshot) {
+
+                  if (!snapshot.hasData) {
+                    return const Center(
+                        child:
+                        CircularProgressIndicator());
+                  }
+
+                  final allDocs =
+                      snapshot.data!.docs;
+
+                  final docs = allDocs.where((doc) {
+                    final data =
+                    doc.data() as Map<String, dynamic>;
+                    final status =
+                        data['status'] ?? 'ongoing';
+                    return status == selectedTab;
+                  }).toList();
+
+                  if (docs.isEmpty) {
+                    return const Center(
+                      child: Text(
+                        "No tournaments",
+                        style: TextStyle(
+                            color: Colors.black54),
+                      ),
+                    );
+                  }
+
+                  return ListView.builder(
+                    padding:
+                    const EdgeInsets.all(16),
                     itemCount: docs.length,
-                    padding: const EdgeInsets.all(16),
-                    itemBuilder: (context, index) {
+                    itemBuilder:
+                        (context, index) {
+
                       final data =
-                      docs[index].data() as Map<String, dynamic>;
+                      docs[index].data()
+                      as Map<String, dynamic>;
 
                       final id = docs[index].id;
-                      final name = data['name'] ?? '';
-                      final game = data['game'] ?? '';
+                      final name =
+                          data['name'] ?? '';
+                      final game =
+                          data['game'] ??
+                              'Custom Game';
                       final count =
-                          data['participantsCount'] ?? 0;
+                          data['participantsCount'] ??
+                              0;
+                      final fee =
+                          data['fee'] ?? 0;
 
                       return GestureDetector(
                         onTap: () {
@@ -219,78 +348,101 @@ class TournamentListPage extends StatelessWidget {
                             context,
                             MaterialPageRoute(
                               builder: (_) {
-                                // 🔥 ADD MPL SUPPORT (SAHAJA TAMBAH)
-                                if (data['bracketType'] == 'mpl') {
+
+                                if (data[
+                                'bracketType'] ==
+                                    'mpl') {
                                   return MplBracketPage(
                                     tournamentId: id,
-                                    tournamentName: name,
+                                    tournamentName:
+                                    name,
                                   );
                                 }
 
-                                if (data['bracketType'] == 'double') {
+                                if (data[
+                                'bracketType'] ==
+                                    'double') {
                                   return DoubleEliminationPage(
                                     tournamentId: id,
-                                    tournamentName: name,
+                                    tournamentName:
+                                    name,
                                   );
                                 }
 
                                 return SingleEliminationPage(
                                   tournamentId: id,
-                                  tournamentName: name,
+                                  tournamentName:
+                                  name,
                                 );
                               },
                             ),
                           );
                         },
                         child: Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.all(16),
+                          margin:
+                          const EdgeInsets.only(
+                              bottom: 12),
+                          padding:
+                          const EdgeInsets.all(
+                              16),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF0B1220),
-                            borderRadius: BorderRadius.circular(15),
+                            color: Colors.white,
+                            borderRadius:
+                            BorderRadius.circular(
+                                15),
                             border: Border.all(
-                                color: const Color(0xFF1F2937)),
+                                color: Colors.grey
+                                    .shade300),
                           ),
                           child: Row(
                             children: [
-                              const Icon(Icons.emoji_events,
-                                  color: Colors.orange),
-                              const SizedBox(width: 10),
+
+                              const CircleAvatar(
+                                radius: 10,
+                                backgroundColor:
+                                Colors.purpleAccent,
+                              ),
+
+                              const SizedBox(
+                                  width: 10),
 
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment:
-                                  CrossAxisAlignment.start,
+                                  CrossAxisAlignment
+                                      .start,
                                   children: [
                                     Text(name,
-                                        style: const TextStyle(
-                                            color: Colors.white,
+                                        style:
+                                        const TextStyle(
                                             fontWeight:
-                                            FontWeight.bold)),
-                                    Text(game,
-                                        style: const TextStyle(
-                                            color:
-                                            Colors.white54)),
-                                    Text("$count participants",
-                                        style: const TextStyle(
-                                            color:
-                                            Colors.white38)),
+                                            FontWeight
+                                                .bold)),
+                                    Text(game),
+                                    Text(
+                                        "$count participants"),
                                   ],
                                 ),
                               ),
 
-                              const Icon(Icons.more_vert,
-                                  color: Colors.white54),
+                              Text(
+                                "RM $fee",
+                                style: const TextStyle(
+                                  color: Colors.green,
+                                  fontWeight:
+                                  FontWeight.bold,
+                                ),
+                              ),
                             ],
                           ),
                         ),
                       );
                     },
-                  ),
-                ),
-              ],
-            );
-          },
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );

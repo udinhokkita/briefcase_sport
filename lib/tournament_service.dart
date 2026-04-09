@@ -16,25 +16,21 @@ class TournamentService {
 
     final uid = FirebaseAuth.instance.currentUser!.uid;
 
-    // CLEAN DATA
     List<String> players = participants
         .map((e) => e.trim())
         .where((e) => e.isNotEmpty)
         .toList();
 
-    // 🔥 FIX: minimum player
     if (players.length < 2) {
       players.add("BYE");
     }
 
-    // ADD BYE
     while (!_isPowerOfTwo(players.length)) {
       players.add("BYE");
     }
 
     players.shuffle();
 
-    // SELECT BRACKET
     List<Map<String, dynamic>> matches;
 
     if (bracketType == "single") {
@@ -45,7 +41,6 @@ class TournamentService {
 
     final batch = _firestore.batch();
 
-    // SAVE TOURNAMENT
     batch.set(tournamentRef, {
       'name': name,
       'game': game,
@@ -54,9 +49,14 @@ class TournamentService {
       'bracketType': bracketType,
       'uid': uid,
       'createdAt': FieldValue.serverTimestamp(),
+
+      // 🔥 STATUS + TIME SYSTEM
+      'status': 'upcoming',
+      'startDate': Timestamp.now()
+          .toDate()
+          .add(const Duration(minutes: 5)), // 🔥 FIX buffer
     });
 
-    // SAVE MATCHES
     for (var m in matches) {
       final ref = tournamentRef.collection('matches').doc();
       batch.set(ref, m);
@@ -70,6 +70,12 @@ class TournamentService {
   // ================= GET MATCHES =================
   Stream<QuerySnapshot<Map<String, dynamic>>> getMatches(
       String tournamentId) {
+
+    // 🔥 SAFE TRIGGER (elak timing bug)
+    Future.microtask(() {
+      autoUpdateStatusByTime(tournamentId);
+    });
+
     return _firestore
         .collection('tournaments')
         .doc(tournamentId)
@@ -84,15 +90,141 @@ class TournamentService {
     required String matchId,
     required String winner,
   }) async {
-    await _firestore
+
+    final matchesRef = _firestore
         .collection('tournaments')
         .doc(tournamentId)
-        .collection('matches')
-        .doc(matchId)
-        .update({
+        .collection('matches');
+
+    final currentDoc = await matchesRef.doc(matchId).get();
+    final currentData = currentDoc.data();
+
+    if (currentData == null) return;
+
+    final currentRound = currentData['round'];
+
+    // UPDATE CURRENT
+    await currentDoc.reference.update({
       'winner': winner,
       'status': 'completed',
     });
+
+    // AUTO MOVE NEXT ROUND
+    final currentRoundQuery = await matchesRef
+        .where('round', isEqualTo: currentRound)
+        .orderBy('matchNumber')
+        .get();
+
+    final currentMatches = currentRoundQuery.docs;
+
+    final index = currentMatches.indexWhere((doc) => doc.id == matchId);
+
+    if (index != -1) {
+      final nextRound = currentRound + 1;
+
+      final nextRoundQuery = await matchesRef
+          .where('round', isEqualTo: nextRound)
+          .orderBy('matchNumber')
+          .get();
+
+      final nextMatches = nextRoundQuery.docs;
+
+      if (nextMatches.isNotEmpty) {
+        final nextMatchIndex = index ~/ 2;
+
+        if (nextMatchIndex < nextMatches.length) {
+          final nextMatch = nextMatches[nextMatchIndex];
+          final nextData = nextMatch.data();
+
+          if ((nextData['player1'] ?? '').isEmpty) {
+            await nextMatch.reference.update({
+              'player1': winner,
+            });
+          } else {
+            await nextMatch.reference.update({
+              'player2': winner,
+            });
+          }
+        }
+      }
+    }
+
+    // AUTO STATUS
+    final allMatches = await matchesRef.get();
+
+    bool allCompleted = true;
+    bool anyCompleted = false;
+
+    for (var doc in allMatches.docs) {
+      final status = doc['status'];
+
+      if (status != 'completed') {
+        allCompleted = false;
+      } else {
+        anyCompleted = true;
+      }
+    }
+
+    String newStatus;
+
+    if (allCompleted) {
+      newStatus = "completed";
+    } else if (anyCompleted) {
+      newStatus = "ongoing";
+    } else {
+      newStatus = "upcoming";
+    }
+
+    await _firestore
+        .collection('tournaments')
+        .doc(tournamentId)
+        .update({
+      'status': newStatus,
+    });
+  }
+
+  // ================= AUTO TIME SYSTEM =================
+  Future<void> autoUpdateStatusByTime(String tournamentId) async {
+    final doc = await _firestore
+        .collection('tournaments')
+        .doc(tournamentId)
+        .get();
+
+    final data = doc.data();
+    if (data == null) return;
+
+    final startDate = (data['startDate'] as Timestamp?)?.toDate();
+    if (startDate == null) return;
+
+    final now = DateTime.now();
+
+    final diff = startDate.difference(now).inSeconds;
+
+    // 🔥 FIX UPCOMING BUG
+    if (diff > 10) {
+      await doc.reference.update({'status': 'upcoming'});
+    } else {
+      final matches = await _firestore
+          .collection('tournaments')
+          .doc(tournamentId)
+          .collection('matches')
+          .get();
+
+      bool allCompleted = true;
+
+      for (var m in matches.docs) {
+        if (m['status'] != 'completed') {
+          allCompleted = false;
+          break;
+        }
+      }
+
+      if (allCompleted) {
+        await doc.reference.update({'status': 'completed'});
+      } else {
+        await doc.reference.update({'status': 'ongoing'});
+      }
+    }
   }
 
   // ================= SINGLE =================
@@ -134,7 +266,6 @@ class TournamentService {
 
     int matchNumber = 1;
 
-    // ===== UPPER =====
     int round = 1;
     List<String> current = List.from(players);
 
@@ -159,7 +290,6 @@ class TournamentService {
       round++;
     }
 
-    // ===== LOWER (FIX STABLE) =====
     int lowerMatches = max(1, players.length ~/ 2);
 
     for (int i = 0; i < lowerMatches; i++) {
@@ -179,7 +309,7 @@ class TournamentService {
 
   // ================= HELPER =================
   bool _isPowerOfTwo(int n) {
-    if (n <= 0) return false; // 🔥 FIX penting
+    if (n <= 0) return false;
     return (n & (n - 1)) == 0;
   }
 }

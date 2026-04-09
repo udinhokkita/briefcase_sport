@@ -13,13 +13,18 @@ class CreateTournamentPage extends StatefulWidget {
 
 class _CreateTournamentPageState
     extends State<CreateTournamentPage> {
-  final TextEditingController nameController =
-  TextEditingController();
+
+  final TextEditingController nameController = TextEditingController();
+  final TextEditingController gameController = TextEditingController();
+  final TextEditingController feeController = TextEditingController();
 
   int teamCount = 4;
   String bracketType = "single";
 
   List<TextEditingController> teamControllers = [];
+
+  DateTime? selectedStartTime;
+  bool startNow = true;
 
   @override
   void initState() {
@@ -33,9 +38,7 @@ class _CreateTournamentPageState
   }
 
   void shuffleTeams() {
-    final names =
-    teamControllers.map((e) => e.text).toList();
-
+    final names = teamControllers.map((e) => e.text).toList();
     names.shuffle(Random());
 
     for (int i = 0; i < teamControllers.length; i++) {
@@ -47,12 +50,43 @@ class _CreateTournamentPageState
 
   void clearAll() {
     nameController.clear();
+    gameController.clear();
+    feeController.clear();
+
     for (var c in teamControllers) {
       c.clear();
     }
   }
 
-  // ================= SAVE =================
+  Future<void> pickStartTime() async {
+    final date = await showDatePicker(
+      context: context,
+      firstDate: DateTime.now(),
+      lastDate: DateTime(2100),
+      initialDate: DateTime.now(),
+    );
+
+    if (date == null) return;
+
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.now(),
+    );
+
+    if (time == null) return;
+
+    setState(() {
+      selectedStartTime = DateTime(
+        date.year,
+        date.month,
+        date.day,
+        time.hour,
+        time.minute,
+      );
+      startNow = false;
+    });
+  }
+
   Future<void> saveTournament() async {
     try {
       final user = FirebaseAuth.instance.currentUser;
@@ -63,6 +97,9 @@ class _CreateTournamentPageState
       }
 
       final name = nameController.text.trim();
+      final game = gameController.text.trim();
+      final feeText = feeController.text.trim();
+      final fee = double.tryParse(feeText) ?? 0;
 
       if (name.isEmpty) {
         showMsg("Enter tournament name");
@@ -77,7 +114,7 @@ class _CreateTournamentPageState
         return;
       }
 
-      // ADD BYE
+      // 🔥 POWER OF 2
       while ((players.length & (players.length - 1)) != 0) {
         players.add("BYE");
       }
@@ -90,23 +127,28 @@ class _CreateTournamentPageState
 
       final batch = FirebaseFirestore.instance.batch();
 
-      // SAVE TOURNAMENT
+      final startDate = startNow
+          ? Timestamp.now()
+          : Timestamp.fromDate(selectedStartTime!);
+
       batch.set(docRef, {
         'uid': user.uid,
         'name': name,
-        'game': "Custom Game",
+        'game': game,
         'players': players,
         'participantsCount': players.length,
-        'bracketType': bracketType, // 🔥 support mpl
+        'bracketType': bracketType,
         'createdAt': FieldValue.serverTimestamp(),
+        'fee': fee,
+        'status': 'upcoming',
+        'startDate': startDate,
       });
 
-      int totalRounds =
-      (log(players.length) / log(2)).ceil();
-
+      // ================= FIX UTAMA =================
+      int totalRounds = (log(players.length) / log(2)).ceil();
       int matchNumber = 1;
 
-      // ===== UPPER =====
+      // ROUND 1
       for (int i = 0; i < players.length; i += 2) {
         final matchRef =
         docRef.collection('matches').doc();
@@ -122,6 +164,7 @@ class _CreateTournamentPageState
         });
       }
 
+      // NEXT ROUNDS
       int matchesInRound = players.length ~/ 2;
 
       for (int r = 2; r <= totalRounds; r++) {
@@ -142,39 +185,15 @@ class _CreateTournamentPageState
           });
         }
       }
-
-      // ===== LOWER (DOUBLE + MPL) =====
-      if (bracketType == "double" || bracketType == "mpl") {
-        int loserRounds = totalRounds - 1;
-
-        for (int r = 1; r <= loserRounds; r++) {
-          int matchCount =
-          pow(2, loserRounds - r).toInt();
-
-          for (int i = 0; i < matchCount; i++) {
-            final matchRef =
-            docRef.collection('matches').doc();
-
-            batch.set(matchRef, {
-              'round': r,
-              'matchNumber': matchNumber++,
-              'player1': '',
-              'player2': '',
-              'winner': '',
-              'status': 'pending',
-              'bracket': 'lower',
-            });
-          }
-        }
-      }
+      // ===========================================
 
       await batch.commit();
 
       showMsg("Tournament Created ✅");
 
       await Future.delayed(const Duration(milliseconds: 500));
-
       Navigator.pop(context);
+
     } catch (e) {
       showMsg("Error: $e");
     }
@@ -185,205 +204,207 @@ class _CreateTournamentPageState
         .showSnackBar(SnackBar(content: Text(msg)));
   }
 
-  // ================= UI (UNCHANGED) =================
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
         child: Column(
           children: [
-            // TITLE
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(
-                "ADD BRACKET",
-                style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.bold,
+            Expanded(
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(
+                  bottom:
+                  MediaQuery.of(context).viewInsets.bottom,
                 ),
-              ),
-            ),
+                child: Column(
+                  children: [
 
-            // NAME
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TextField(
-                controller: nameController,
-                decoration: InputDecoration(
-                  hintText: "My Tournament",
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
+                    const SizedBox(height: 20),
 
-            const SizedBox(height: 20),
-
-            // TEAM COUNT
-            const Text(
-              "Number of teams",
-              style: TextStyle(
-                  color: Colors.deepPurple,
-                  fontWeight: FontWeight.bold),
-            ),
-
-            const SizedBox(height: 10),
-
-            SizedBox(
-              height: 60,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: 15,
-                itemBuilder: (context, index) {
-                  int num = index + 2;
-                  return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        teamCount = num;
-                        generateTeams();
-                      });
-                    },
-                    child: Container(
-                      margin: const EdgeInsets.symmetric(horizontal: 8),
-                      width: 60,
-                      decoration: BoxDecoration(
-                        color: teamCount == num
-                            ? Colors.deepPurple
-                            : Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Center(
-                        child: Text(
-                          "$num",
-                          style: TextStyle(
-                            fontSize: 20,
-                            color: teamCount == num
-                                ? Colors.white
-                                : Colors.black,
-                          ),
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Text(
+                        "ADD BRACKET",
+                        style: TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
-                  );
-                },
-              ),
-            ),
 
-            const SizedBox(height: 20),
+                    Padding(
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 16),
+                      child: TextField(
+                        controller: nameController,
+                        decoration: InputDecoration(
+                          hintText: "My Tournament",
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
 
-            // TYPE (ADD MPL TANPA UBAH DESIGN)
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      bracketType = "single";
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: bracketType == "single"
-                        ? Colors.deepPurple
-                        : Colors.grey.shade300,
-                  ),
-                  child: const Text("Single"),
-                ),
-                const SizedBox(width: 10),
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      bracketType = "double";
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: bracketType == "double"
-                        ? Colors.deepPurple
-                        : Colors.grey.shade300,
-                  ),
-                  child: const Text("Double"),
-                ),
-                const SizedBox(width: 10),
+                    const SizedBox(height: 10),
 
-                // 🔥 MPL BUTTON (TAMBAH SAHAJA)
-                ElevatedButton(
-                  onPressed: () {
-                    setState(() {
-                      bracketType = "mpl";
-                    });
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: bracketType == "mpl"
-                        ? Colors.deepPurple
-                        : Colors.grey.shade300,
-                  ),
-                  child: const Text("MPL"),
-                ),
-              ],
-            ),
+                    Padding(
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 16),
+                      child: TextField(
+                        controller: gameController,
+                        decoration: const InputDecoration(
+                          hintText: "Game",
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
 
-            const SizedBox(height: 20),
+                    const SizedBox(height: 10),
 
-            // SEEDS
-            Expanded(
-              child: ListView.builder(
-                itemCount: teamCount ~/ 2,
-                itemBuilder: (context, i) {
-                  int left = i;
-                  int right = teamCount - 1 - i;
+                    Padding(
+                      padding:
+                      const EdgeInsets.symmetric(horizontal: 16),
+                      child: TextField(
+                        controller: feeController,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          hintText: "RM Fee",
+                          prefixText: "RM ",
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
+                    ),
 
-                  return Padding(
-                    padding: const EdgeInsets.all(10),
-                    child: Row(
+                    const SizedBox(height: 10),
+
+                    Row(
+                      mainAxisAlignment:
+                      MainAxisAlignment.center,
                       children: [
-                        Expanded(
-                          child: TextField(
-                            controller: teamControllers[left],
-                            decoration: InputDecoration(
-                              hintText: "Team ${left + 1}",
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
+                        ElevatedButton(
+                          onPressed: () {
+                            setState(() {
+                              startNow = true;
+                            });
+                          },
+                          child: const Text("Start Now"),
                         ),
-                        const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 10),
-                          child: Text("VS"),
-                        ),
-                        Expanded(
-                          child: TextField(
-                            controller: teamControllers[right],
-                            decoration: InputDecoration(
-                              hintText: "Team ${right + 1}",
-                              border: OutlineInputBorder(),
-                            ),
-                          ),
+                        const SizedBox(width: 10),
+                        ElevatedButton(
+                          onPressed: pickStartTime,
+                          child: const Text("Pick Time"),
                         ),
                       ],
                     ),
-                  );
-                },
+
+                    const SizedBox(height: 10),
+
+                    SizedBox(
+                      height: 60,
+                      child: ListView.builder(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: 15,
+                        itemBuilder: (context, index) {
+                          int num = index + 2;
+
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                teamCount = num;
+                                generateTeams();
+                              });
+                            },
+                            child: Container(
+                              margin:
+                              const EdgeInsets.symmetric(horizontal: 8),
+                              width: 60,
+                              decoration: BoxDecoration(
+                                color: teamCount == num
+                                    ? Colors.deepPurple
+                                    : Colors.grey.shade200,
+                                borderRadius:
+                                BorderRadius.circular(12),
+                              ),
+                              child: Center(child: Text("$num")),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+
+                    const SizedBox(height: 10),
+
+                    ListView.builder(
+                      shrinkWrap: true,
+                      physics:
+                      const NeverScrollableScrollPhysics(),
+                      itemCount: teamCount ~/ 2,
+                      itemBuilder: (context, i) {
+                        int left = i;
+                        int right = teamCount - 1 - i;
+
+                        return Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller:
+                                  teamControllers[left],
+                                  decoration: InputDecoration(
+                                    hintText:
+                                    "Team ${left + 1}",
+                                    border:
+                                    OutlineInputBorder(),
+                                  ),
+                                ),
+                              ),
+                              const Padding(
+                                padding:
+                                EdgeInsets.symmetric(horizontal: 10),
+                                child: Text("VS"),
+                              ),
+                              Expanded(
+                                child: TextField(
+                                  controller:
+                                  teamControllers[right],
+                                  decoration: InputDecoration(
+                                    hintText:
+                                    "Team ${right + 1}",
+                                    border:
+                                    OutlineInputBorder(),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+
+                    const SizedBox(height: 20),
+                  ],
+                ),
               ),
             ),
 
-            // BUTTONS
             Container(
               padding: const EdgeInsets.all(12),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                mainAxisAlignment:
+                MainAxisAlignment.spaceAround,
                 children: [
                   iconBtn(Icons.arrow_back, () {
                     Navigator.pop(context);
                   }),
                   iconBtn(Icons.close, clearAll),
                   iconBtn(Icons.shuffle, shuffleTeams),
-                  iconBtn(Icons.remove_red_eye, () {
-                    showMsg("Preview Coming Soon 👀");
-                  }),
                   FloatingActionButton(
                     backgroundColor: Colors.deepPurple,
                     onPressed: saveTournament,
-                    child: const Icon(Icons.arrow_forward),
+                    child:
+                    const Icon(Icons.arrow_forward),
                   ),
                 ],
               ),
